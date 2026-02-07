@@ -1,7 +1,14 @@
 #!/bin/bash
 
-# Script to run the YOLO phone detection demo in NVIDIA PyTorch container
+# Script to run the YOLO phone detection demo in custom Docker image
 # with GPU, camera, and display support
+
+# Build the Docker image if it doesn't exist
+IMAGE_NAME="yolo-phone-demo"
+if [[ "$(sudo docker images -q $IMAGE_NAME 2> /dev/null)" == "" ]]; then
+  echo "Building Docker image (one-time setup)..."
+  sudo docker build -t $IMAGE_NAME .
+fi
 
 xhost +local:docker  # Allow Docker to access X server
 
@@ -12,14 +19,6 @@ sudo docker run --rm --gpus all \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   --device=/dev/video0:/dev/video0 \
   --ipc=host \
-  nvcr.io/nvidia/pytorch:26.01-py3 bash -c "\
-    apt-get update && \
-    apt-get install -y libgl1 libglib2.0-0 libsm6 libxrender1 libxext6 \
-                       libxcb1 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 \
-                       libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
-                       libxcb-shape0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
-                       libxkbcommon-x11-0 libdbus-1-3 && \
-    pip install opencv-python ultralytics && \
-    python main.py"
+  $IMAGE_NAME
 
 xhost -local:docker  # Revoke access after running

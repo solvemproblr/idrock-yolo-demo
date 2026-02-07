@@ -1,0 +1,9 @@
+venv/
+*.pt
+*.heic
+*.png
+__pycache__/
+.git/
+.gitignore
+README.md
+IMPROVEMENTS.md
