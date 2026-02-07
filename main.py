@@ -1,6 +1,7 @@
 import cv2
 import time
 import torch
+import numpy as np
 from ultralytics import YOLO
 
 class PhoneAlertDemo:
@@ -10,7 +11,21 @@ class PhoneAlertDemo:
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         print(f"🚀 Running on: {torch.cuda.get_device_name(0) if self.device == 'cuda' else 'CPU'}")
 
-        # 2. Load Models (Using Extra-Large models for best accuracy)
+        # 2. Load Logos
+        print("Loading logos...")
+        self.logo_newuu = cv2.imread('newuu.png', cv2.IMREAD_UNCHANGED)
+        self.logo_idrock = cv2.imread('idrock.png', cv2.IMREAD_UNCHANGED)
+        
+        # Resize logos to reasonable size (keeping aspect ratio)
+        self.logo_height = 60  # pixels
+        if self.logo_newuu is not None:
+            aspect_ratio = self.logo_newuu.shape[1] / self.logo_newuu.shape[0]
+            self.logo_newuu = cv2.resize(self.logo_newuu, (int(self.logo_height * aspect_ratio), self.logo_height))
+        if self.logo_idrock is not None:
+            aspect_ratio = self.logo_idrock.shape[1] / self.logo_idrock.shape[0]
+            self.logo_idrock = cv2.resize(self.logo_idrock, (int(self.logo_height * aspect_ratio), self.logo_height))
+
+        # 3. Load Models (Using Extra-Large models for best accuracy)
         print("Loading Object Detection Model (Extra-Large)...")
         self.model_obj = YOLO('yolo11x.pt')  # Most accurate - best for distinguishing phones from remotes
         
@@ -25,6 +40,52 @@ class PhoneAlertDemo:
         # COCO Class IDs
         self.CELL_PHONE_CLASS_ID = 67
         self.REMOTE_CLASS_ID = 65  # TV remote - often confused with phones 
+
+    def overlay_logos(self, frame):
+        """Overlay logos in the top right corner"""
+        if self.logo_newuu is None and self.logo_idrock is None:
+            return frame
+        
+        frame_h, frame_w = frame.shape[:2]
+        margin = 20  # pixels from edge
+        spacing = 10  # spacing between logos
+        
+        x_offset = frame_w - margin
+        y_offset = margin
+        
+        # Place idrock logo first (rightmost)
+        if self.logo_idrock is not None:
+            logo_h, logo_w = self.logo_idrock.shape[:2]
+            x_offset -= logo_w
+            
+            # Overlay with alpha channel if available
+            if self.logo_idrock.shape[2] == 4:  # Has alpha channel
+                alpha = self.logo_idrock[:, :, 3] / 255.0
+                for c in range(3):
+                    frame[y_offset:y_offset+logo_h, x_offset:x_offset+logo_w, c] = \
+                        alpha * self.logo_idrock[:, :, c] + \
+                        (1 - alpha) * frame[y_offset:y_offset+logo_h, x_offset:x_offset+logo_w, c]
+            else:
+                frame[y_offset:y_offset+logo_h, x_offset:x_offset+logo_w] = self.logo_idrock[:, :, :3]
+            
+            x_offset -= spacing
+        
+        # Place newuu logo (left of idrock)
+        if self.logo_newuu is not None:
+            logo_h, logo_w = self.logo_newuu.shape[:2]
+            x_offset -= logo_w
+            
+            # Overlay with alpha channel if available
+            if self.logo_newuu.shape[2] == 4:  # Has alpha channel
+                alpha = self.logo_newuu[:, :, 3] / 255.0
+                for c in range(3):
+                    frame[y_offset:y_offset+logo_h, x_offset:x_offset+logo_w, c] = \
+                        alpha * self.logo_newuu[:, :, c] + \
+                        (1 - alpha) * frame[y_offset:y_offset+logo_h, x_offset:x_offset+logo_w, c]
+            else:
+                frame[y_offset:y_offset+logo_h, x_offset:x_offset+logo_w] = self.logo_newuu[:, :, :3]
+        
+        return frame
 
     def run(self):
         print("Starting Demo... Press 'q' to exit, 'f' to toggle fullscreen.")
@@ -100,6 +161,9 @@ class PhoneAlertDemo:
             prev_time = curr_time
             cv2.putText(annotated_frame, f"FPS: {int(fps)}", (20, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+
+            # 5. Add logos to top right
+            annotated_frame = self.overlay_logos(annotated_frame)
 
             # --- D. DISPLAY ---
             cv2.imshow(window_name, annotated_frame)
