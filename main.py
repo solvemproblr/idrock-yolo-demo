@@ -29,10 +29,16 @@ class PhoneAlertDemo:
         print("Loading Object Detection Model (Extra-Large)...")
         self.model_obj = YOLO('yolo11x.pt')  # Most accurate - best for distinguishing phones from remotes
         
+        print("Loading Segmentation Model (Extra-Large)...")
+        self.model_seg = YOLO('yolo11x-seg.pt')  # Pixel-perfect segmentation masks
+        
         print("Loading Pose Estimation Model (Large)...")
         self.model_pose = YOLO('yolo11l-pose.pt') 
+        
+        # Toggle for segmentation mode
+        self.use_segmentation = True  # Set to False to use bounding boxes
 
-        # 3. Camera Setup
+        # 4. Camera Setup
         self.cap = cv2.VideoCapture(capture_index)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
@@ -88,7 +94,7 @@ class PhoneAlertDemo:
         return frame
 
     def run(self):
-        print("Starting Demo... Press 'q' to exit, 'f' to toggle fullscreen.")
+        print("Starting Demo... Press 'q' to exit, 'f' to toggle fullscreen, 's' to toggle segmentation.")
         prev_time = 0
         
         # Create named window and set to fullscreen
@@ -102,15 +108,27 @@ class PhoneAlertDemo:
                 break
 
             # --- A. INFERENCE ---
-            # Run Object Detection with higher confidence and larger image size
-            results_obj = self.model_obj.predict(
-                frame, 
-                conf=0.5,  # Higher confidence threshold to reduce false positives
-                iou=0.45,
-                imgsz=1280,  # Larger image size for better small object detection
-                device=self.device, 
-                verbose=False
-            )
+            # Choose between segmentation or detection
+            if self.use_segmentation:
+                # Run Segmentation for pixel-perfect masks
+                results_obj = self.model_seg.predict(
+                    frame, 
+                    conf=0.5,
+                    iou=0.45,
+                    imgsz=1280,
+                    device=self.device, 
+                    verbose=False
+                )
+            else:
+                # Run Object Detection with bounding boxes
+                results_obj = self.model_obj.predict(
+                    frame, 
+                    conf=0.5,
+                    iou=0.45,
+                    imgsz=1280,
+                    device=self.device, 
+                    verbose=False
+                )
             
             # Run Pose Detection
             results_pose = self.model_pose.predict(frame, conf=0.5, device=self.device, verbose=False)
@@ -155,12 +173,17 @@ class PhoneAlertDemo:
                     cv2.rectangle(annotated_frame, (phone_box[0], phone_box[1]), 
                                   (phone_box[2], phone_box[3]), (0, 0, 255), 5)
 
-            # 4. FPS Counter
+            # 4. FPS Counter and Mode Indicator
             curr_time = time.time()
             fps = 1 / (curr_time - prev_time)
             prev_time = curr_time
             cv2.putText(annotated_frame, f"FPS: {int(fps)}", (20, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            
+            # Show current mode
+            mode_text = "Mode: SEGMENTATION" if self.use_segmentation else "Mode: DETECTION"
+            cv2.putText(annotated_frame, mode_text, (20, 75), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             # 5. Add logos to top right
             annotated_frame = self.overlay_logos(annotated_frame)
@@ -178,6 +201,11 @@ class PhoneAlertDemo:
                     cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
                 else:
                     cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+            elif key == ord('s'):
+                # Toggle segmentation mode
+                self.use_segmentation = not self.use_segmentation
+                mode = "SEGMENTATION" if self.use_segmentation else "DETECTION"
+                print(f"Switched to {mode} mode")
 
         self.cap.release()
         cv2.destroyAllWindows()
